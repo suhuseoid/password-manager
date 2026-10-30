@@ -66,18 +66,26 @@ struct VaultFile { format: String, version: u32, kdf: KdfParams, nonce: String, 
 #[derive(Serialize, Deserialize, Clone, Default, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     pub id: String,
+    /// "login" atau "note" (catatan aman, mis. kode backup)
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub title: String,
     pub url: String,
     pub username: String,
     pub password: String,
     pub notes: String,
+    /// Kunci 2FA (Base32 atau tautan otpauth://)
+    #[serde(default)]
+    pub totp: String,
     pub created: i64,
     pub updated: i64,
 }
 
+fn default_kind() -> String { "login".into() }
+
 impl Entry {
     pub fn new(title: String, url: String, username: String, password: String, notes: String) -> Self {
-        Entry { id: String::new(), title, url, username, password, notes, created: 0, updated: 0 }
+        Entry { id: String::new(), kind: default_kind(), title, url, username, password, notes, totp: String::new(), created: 0, updated: 0 }
     }
 }
 
@@ -187,8 +195,16 @@ impl Vault {
     }
 
     pub fn upsert(&mut self, mut e: Entry) -> Result<String> {
-        if e.title.trim().is_empty() && e.url.trim().is_empty() {
+        if e.kind != "login" && e.kind != "note" { e.kind = default_kind(); }
+        if e.kind == "note" {
+            if e.title.trim().is_empty() { return Err(VaultError::Invalid("Catatan harus punya judul.".into())); }
+            e.url.clear(); e.username.clear(); e.password.clear(); e.totp.clear();
+        } else if e.title.trim().is_empty() && e.url.trim().is_empty() {
             return Err(VaultError::Invalid("Isi minimal judul atau alamat situs.".into()));
+        }
+        e.totp = e.totp.trim().to_string();
+        if !e.totp.is_empty() {
+            crate::totp::parse(&e.totp).map_err(VaultError::Invalid)?;
         }
         let t = now();
         if let Some(existing) = self.data.entries.iter_mut().find(|x| !e.id.is_empty() && x.id == e.id) {
@@ -261,6 +277,7 @@ pub fn parse_csv(text: &str) -> Result<(Vec<Entry>, usize, String)> {
     let c_user = col(&["username", "login_username", "user", "email"]);
     let c_title = col(&["name", "title"]);
     let c_notes = col(&["note", "notes", "extra"]);
+    let c_totp = col(&["otpauth", "login_totp", "totp"]);
     let has = |n: &str| headers.iter().any(|h| h == n);
     let source = if has("login_uri") { "Bitwarden" }
         else if has("httprealm") { "Firefox" }
@@ -280,7 +297,10 @@ pub fn parse_csv(text: &str) -> Result<(Vec<Entry>, usize, String)> {
         let mut title = get(c_title);
         if title.is_empty() { title = host_of(&url); }
         if title.is_empty() { title = username.clone(); }
-        out.push(Entry::new(title, url, username, password, get(c_notes)));
+        let mut e = Entry::new(title, url, username, password, get(c_notes));
+        let totp = get(c_totp);
+        if !totp.is_empty() && crate::totp::parse(&totp).is_ok() { e.totp = totp; }
+        out.push(e);
     }
     Ok((out, skipped, source))
 }
@@ -424,6 +444,40 @@ mod tests {
         assert_eq!(v.import(items).unwrap(), (1, 0));
         let (items, _, _) = parse_csv(csv).unwrap();
         assert_eq!(v.import(items).unwrap(), (0, 1));
+    }
+
+    #[test]
+    fn safari_csv_imports_totp() {
+        let csv = "Title,URL,Username,Password,Notes,OTPAuth\nGitHub,https://github.com,budi,pw,,otpauth://totp/GitHub:budi?secret=JBSWY3DPEHPK3PXP&issuer=GitHub\n";
+        let (items, _, _) = parse_csv(csv).unwrap();
+        assert!(items[0].totp.starts_with("otpauth://"));
+    }
+
+    #[test]
+    fn invalid_totp_rejected_on_save() {
+        let p = tmp("badtotp");
+        let mut v = Vault::create(&p, "master-password-kuat", FAST).unwrap();
+        let mut e = sample(); e.totp = "bukan-kunci!".into();
+        assert!(v.upsert(e).is_err());
+    }
+
+    #[test]
+    fn secure_note_roundtrip_and_cleanup() {
+        let p = tmp("note");
+        let mut v = Vault::create(&p, "master-password-kuat", FAST).unwrap();
+        let mut n = Entry::new("Kode backup Google".into(), "x".into(), "u".into(), "p".into(), "1111 2222\n3333 4444".into());
+        n.kind = "note".into();
+        let id = v.upsert(n).unwrap();
+        let v2 = Vault::open(&p, "master-password-kuat").unwrap();
+        let got = v2.get(&id).unwrap();
+        assert_eq!((got.kind.as_str(), got.notes.as_str(), got.password.as_str()), ("note", "1111 2222\n3333 4444", ""));
+        assert!(!fs::read_to_string(&p).unwrap().contains("3333"));
+    }
+
+    #[test]
+    fn old_vault_without_new_fields_loads() {
+        let d: VaultData = serde_json::from_str(r#"{"entries":[{"id":"a","title":"t","url":"","username":"","password":"p","notes":"","created":1,"updated":1}]}"#).unwrap();
+        assert_eq!((d.entries[0].kind.as_str(), d.entries[0].totp.as_str()), ("login", ""));
     }
 
     #[test]

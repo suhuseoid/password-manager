@@ -59,3 +59,18 @@ main { flex: 1; overflow-y: auto; padding: 24px 28px; }
 .genout { font: 18px ui-monospace, Menlo, Consolas, monospace; padding: 14px; border: 1px dashed var(--line); border-radius: 10px; word-break: break-all; text-align: center; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 10; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 20; }
+
+select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--text); font: inherit; }
+.card.wide-card { width: 640px; }
+textarea.mono { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+.avatar.note { background: #7a5af5; }
+.badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--line); color: var(--muted); margin-left: 6px; vertical-align: middle; }
+.totp { display: flex; align-items: center; gap: 14px; }
+.totp .code { font: 600 28px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; }
+.totp .ring { width: 34px; height: 34px; flex: none; }
+.totp .ring circle { fill: none; stroke-width: 4; }
+.totp .ring .bg { stroke: var(--line); }
+.totp .ring .fg { stroke: var(--accent); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .9s linear; }
+.totp.low .ring .fg { stroke: var(--danger); }
+.totp.low .code { color: var(--danger); }
+pre.secret { white-space: pre-wrap; margin: 0; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; }

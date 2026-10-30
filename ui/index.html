@@ -38,7 +38,14 @@
 <section id="view-main" class="hidden">
   <header class="topbar">
     <input id="search" type="search" placeholder="Cari situs, username, catatan…">
-    <button id="btn-add" class="primary">+ Tambah</button>
+    <select id="filter">
+      <option value="all">Semua</option>
+      <option value="login">Login</option>
+      <option value="totp">Punya 2FA</option>
+      <option value="note">Catatan Aman</option>
+    </select>
+    <button id="btn-add" class="primary">+ Login</button>
+    <button id="btn-add-note" class="primary">+ Catatan</button>
     <button id="btn-import">Impor CSV</button>
     <button id="btn-gen">Buat Password</button>
     <button id="btn-settings">Pengaturan</button>
@@ -66,9 +73,29 @@
     <label>Password
       <div class="row"><input id="f-pass" type="password" autocomplete="off"><button id="f-show" type="button">Lihat</button><button id="f-gen" type="button">Acak</button></div>
     </label>
+    <label>Kunci 2FA (opsional)
+      <div class="row"><input id="f-totp" type="password" autocomplete="off" placeholder="Kunci Base32 atau otpauth://…"><button id="f-totp-show" type="button">Lihat</button><button id="f-qr" type="button">Pindai QR</button></div>
+      <input id="file-qr" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+    </label>
+    <div id="totp-preview" class="muted small"></div>
     <label>Catatan<textarea id="f-notes" rows="3"></textarea></label>
     <div class="actions"><button id="edit-cancel">Batal</button><button id="edit-save" class="primary">Simpan</button></div>
     <p id="edit-err" class="err"></p>
+  </div>
+</div>
+
+<!-- Modal catatan aman -->
+<div id="modal-note" class="modal hidden">
+  <div class="card wide-card">
+    <h2 id="note-title-h">Catatan Aman</h2>
+    <label>Judul<input id="n-title" placeholder="mis. Kode backup Google, Recovery key GitHub"></label>
+    <label>Isi
+      <textarea id="n-body" class="mono" rows="12" placeholder="Tempel kode backup di sini, satu kode per baris"></textarea>
+    </label>
+    <div class="row"><button id="n-load" type="button">Muat dari file .txt</button><span class="muted small">Setelah dimuat, hapus file .txt aslinya.</span></div>
+    <input id="file-txt" type="file" accept=".txt,text/plain" class="hidden">
+    <div class="actions"><button id="note-cancel">Batal</button><button id="note-save" class="primary">Simpan</button></div>
+    <p id="note-err" class="err"></p>
   </div>
 </div>
 

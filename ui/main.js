@@ -6,6 +6,9 @@ const AUTO_LOCK_MS = 5 * 60 * 1000;
 let selectedId = null;
 let editingId = null;
 let idleTimer = null;
+let totpTimer = null;
+let editingNoteId = null;
+function stopTotp() { clearInterval(totpTimer); totpTimer = null; }
 
 function show(view) {
   for (const v of ["view-setup", "view-unlock", "view-main"]) $(v).classList.toggle("hidden", v !== view);
@@ -72,9 +75,10 @@ $("setup-pw2").addEventListener("keydown", (e) => e.key === "Enter" && $("btn-cr
 async function enterMain() { show("view-main"); selectedId = null; renderDetail(null); await refreshList(); resetIdle(); $("search").focus(); }
 
 async function doLock() {
+  stopTotp();
   await call("lock");
   selectedId = null; $("detail").replaceChildren(); $("list").replaceChildren();
-  for (const m of ["modal-edit", "modal-gen", "modal-settings", "modal-confirm"]) modal(m, false);
+  for (const m of ["modal-edit", "modal-note", "modal-gen", "modal-settings", "modal-confirm"]) modal(m, false);
   show("view-unlock"); $("unlock-pw").focus();
 }
 $("btn-lock").onclick = doLock;
@@ -88,20 +92,24 @@ for (const ev of ["mousemove", "keydown", "click", "scroll"]) document.addEventL
 
 // ---------- daftar ----------
 async function refreshList() {
-  const items = await call("list_entries", { query: $("search").value.trim() });
+  const items = await call("list_entries", { query: $("search").value.trim(), filter: $("filter").value });
   const s = await call("status");
   $("count").textContent = `${items.length} dari ${s.count} data`;
   const ul = $("list"); ul.replaceChildren();
   for (const it of items) {
     const letter = (it.title || it.host || "?").trim().charAt(0).toUpperCase();
+    const isNote = it.kind === "note";
+    const name = el("div", {}, it.title || it.host);
+    if (it.has_totp) name.append(el("span", { class: "badge" }, "2FA"));
     const li = el("li", { class: it.id === selectedId ? "sel" : "", onclick: () => select(it.id) },
-      el("div", { class: "avatar" }, letter),
-      el("div", { class: "li-text" }, el("div", {}, it.title || it.host), el("div", { class: "muted small" }, it.username || it.host)));
+      el("div", { class: "avatar" + (isNote ? " note" : "") }, isNote ? "✎" : letter),
+      el("div", { class: "li-text" }, name, el("div", { class: "muted small" }, isNote ? "Catatan aman" : (it.username || it.host))));
     ul.append(li);
   }
   if (!items.length) ul.append(el("li", { class: "muted" }, s.count ? "Tidak ada yang cocok." : "Belum ada data. Klik + Tambah atau Impor CSV."));
 }
 $("search").addEventListener("input", () => { clearTimeout(refreshList.h); refreshList.h = setTimeout(refreshList, 120); });
+$("filter").addEventListener("change", refreshList);
 
 async function select(id) {
   selectedId = id;
@@ -116,10 +124,55 @@ function copyBtn(field, id) {
   } }, "Salin");
 }
 
+function secretBlock(label, value, field, id, pre) {
+  const mask = "••••••••••••";
+  const span = pre ? el("pre", { class: "secret" }, "•••••• (tersembunyi)") : el("span", { class: "mono" }, mask);
+  let shown = false;
+  const toggle = el("button", { onclick: () => {
+    shown = !shown; span.textContent = shown ? value : (pre ? "•••••• (tersembunyi)" : mask);
+    toggle.textContent = shown ? "Sembunyikan" : "Lihat";
+  } }, "Lihat");
+  return el("div", { class: "field" }, el("div", { class: "k" }, label),
+    el("div", { class: "v" }, span, el("div", { class: "row" }, toggle, copyBtn(field, id))));
+}
+
+function totpBlock(id) {
+  const code = el("span", { class: "code" }, "------");
+  const C = 2 * Math.PI * 14;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg"); svg.setAttribute("viewBox", "0 0 34 34"); svg.classList.add("ring");
+  const mk = (cls) => { const c = document.createElementNS(svgNS, "circle"); c.setAttribute("cx", 17); c.setAttribute("cy", 17); c.setAttribute("r", 14); c.setAttribute("class", cls); c.setAttribute("stroke-dasharray", C); return c; };
+  const bg = mk("bg"), fg = mk("fg"); svg.append(bg, fg);
+  const secs = el("span", { class: "muted small" }, "");
+  const box = el("div", { class: "totp" }, svg, code, secs);
+  const tick = async () => {
+    try {
+      const t = await call("totp_now", { id });
+      code.textContent = t.code.length === 6 ? t.code.slice(0, 3) + " " + t.code.slice(3) : t.code;
+      fg.setAttribute("stroke-dashoffset", C * (1 - t.remaining / t.period));
+      secs.textContent = `${t.remaining} dtk`;
+      box.classList.toggle("low", t.remaining <= 5);
+    } catch (e) { code.textContent = "Error"; secs.textContent = e.message; stopTotp(); }
+  };
+  stopTotp(); tick(); totpTimer = setInterval(tick, 1000);
+  return el("div", { class: "field" }, el("div", { class: "k" }, "Kode 2FA"),
+    el("div", { class: "v" }, box, copyBtn("totp", id)));
+}
+
 function renderDetail(e) {
+  stopTotp();
   const d = $("detail"); d.replaceChildren();
-  if (!e) { d.append(el("div", { class: "empty muted" }, "Pilih data di sebelah kiri, atau klik + Tambah.")); return; }
+  if (!e) { d.append(el("div", { class: "empty muted" }, "Pilih data di sebelah kiri, atau klik + Login / + Catatan.")); return; }
   d.append(el("h2", {}, e.title || "(tanpa judul)"));
+  const dt = (t) => t ? new Date(t * 1000).toLocaleString("id-ID") : "-";
+  if (e.kind === "note") {
+    d.append(secretBlock("Isi catatan", e.notes, "notes", e.id, true));
+    d.append(el("p", { class: "muted small" }, `Dibuat ${dt(e.created)} · Diubah ${dt(e.updated)}`));
+    d.append(el("div", { class: "actions", style: "justify-content:flex-start" },
+      el("button", { onclick: () => openNote(e) }, "Ubah"),
+      el("button", { class: "danger", onclick: () => askDelete(e) }, "Hapus")));
+    return;
+  }
   if (e.url) d.append(el("div", { class: "field" }, el("div", { class: "k" }, "Alamat situs"),
     el("div", { class: "v" }, el("span", {}, e.url), copyBtn("url", e.id))));
   d.append(el("div", { class: "field" }, el("div", { class: "k" }, "Username / email"),
@@ -129,8 +182,8 @@ function renderDetail(e) {
   const toggle = el("button", { onclick: () => { shown = !shown; pwSpan.textContent = shown ? e.password : "••••••••••••"; toggle.textContent = shown ? "Sembunyikan" : "Lihat"; } }, "Lihat");
   d.append(el("div", { class: "field" }, el("div", { class: "k" }, "Password"),
     el("div", { class: "v" }, pwSpan, el("div", { class: "row" }, toggle, copyBtn("password", e.id)))));
+  if (e.totp) d.append(totpBlock(e.id));
   if (e.notes) d.append(el("div", { class: "field" }, el("div", { class: "k" }, "Catatan"), el("div", { class: "notes" }, e.notes)));
-  const dt = (t) => t ? new Date(t * 1000).toLocaleString("id-ID") : "-";
   d.append(el("p", { class: "muted small" }, `Dibuat ${dt(e.created)} · Diubah ${dt(e.updated)}`));
   d.append(el("div", { class: "actions", style: "justify-content:flex-start" },
     el("button", { onclick: () => openEdit(e) }, "Ubah"),
@@ -143,7 +196,9 @@ function openEdit(e) {
   $("edit-title").textContent = e ? "Ubah Data" : "Tambah Data";
   $("f-title").value = e?.title || ""; $("f-url").value = e?.url || "";
   $("f-user").value = e?.username || ""; $("f-pass").value = e?.password || ""; $("f-notes").value = e?.notes || "";
+  $("f-totp").value = e?.totp || ""; $("f-totp").type = "password"; $("f-totp-show").textContent = "Lihat";
   $("f-pass").type = "password"; $("f-show").textContent = "Lihat"; $("edit-err").textContent = "";
+  previewTotp();
   modal("modal-edit", true); $("f-title").focus();
 }
 $("btn-add").onclick = () => openEdit(null);
@@ -152,9 +207,57 @@ $("f-show").onclick = () => { const p = $("f-pass"); p.type = p.type === "passwo
 $("f-gen").onclick = async () => { $("f-pass").value = await call("generate", { len: 20, symbols: true }); $("f-pass").type = "text"; $("f-show").textContent = "Sembunyikan"; };
 $("edit-save").onclick = async () => {
   const entry = { id: editingId || "", title: $("f-title").value.trim(), url: $("f-url").value.trim(),
-    username: $("f-user").value.trim(), password: $("f-pass").value, notes: $("f-notes").value, created: 0, updated: 0 };
+    username: $("f-user").value.trim(), password: $("f-pass").value, notes: $("f-notes").value,
+    totp: $("f-totp").value.trim(), kind: "login", created: 0, updated: 0 };
   try { const id = await call("save_entry", { entry }); modal("modal-edit", false); toast("Tersimpan"); await select(id); }
   catch (e) { $("edit-err").textContent = e.message; }
+};
+
+// ---------- 2FA di formulir ----------
+async function previewTotp() {
+  const v = $("f-totp").value.trim(), out = $("totp-preview");
+  if (!v) { out.textContent = ""; return; }
+  try { const t = await call("totp_preview", { secret: v });
+        out.textContent = `Kunci valid${t.issuer ? " (" + t.issuer + ")" : ""}. Kode saat ini: ${t.code}`; out.style.color = ""; }
+  catch (e) { out.textContent = e.message; out.style.color = "var(--danger)"; }
+}
+$("f-totp").addEventListener("input", () => { clearTimeout(previewTotp.h); previewTotp.h = setTimeout(previewTotp, 250); });
+$("f-totp-show").onclick = () => { const p = $("f-totp"); p.type = p.type === "password" ? "text" : "password"; $("f-totp-show").textContent = p.type === "password" ? "Lihat" : "Sembunyikan"; };
+$("f-qr").onclick = () => $("file-qr").click();
+$("file-qr").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0]; ev.target.value = "";
+  if (!f) return;
+  try {
+    const bytes = Array.from(new Uint8Array(await f.arrayBuffer()));
+    $("f-totp").value = await call("qr_decode", { bytes });
+    previewTotp(); toast("QR 2FA terbaca. Sebaiknya hapus gambar QR tersebut.");
+  } catch (e) { $("totp-preview").textContent = e.message; $("totp-preview").style.color = "var(--danger)"; }
+});
+
+// ---------- catatan aman ----------
+function openNote(e) {
+  editingNoteId = e ? e.id : null;
+  $("note-title-h").textContent = e ? "Ubah Catatan Aman" : "Catatan Aman Baru";
+  $("n-title").value = e?.title || ""; $("n-body").value = e?.notes || ""; $("note-err").textContent = "";
+  modal("modal-note", true); $("n-title").focus();
+}
+$("btn-add-note").onclick = () => openNote(null);
+$("note-cancel").onclick = () => modal("modal-note", false);
+$("n-load").onclick = () => $("file-txt").click();
+$("file-txt").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0]; ev.target.value = "";
+  if (!f) return;
+  if (f.size > 1024 * 1024) return ($("note-err").textContent = "File terlalu besar (maks 1 MB).");
+  const text = await f.text();
+  $("n-body").value = $("n-body").value ? $("n-body").value.replace(/\s*$/, "\n") + text : text;
+  if (!$("n-title").value) $("n-title").value = f.name.replace(/\.txt$/i, "");
+  toast("File dimuat. Setelah disimpan, hapus file .txt aslinya.");
+});
+$("note-save").onclick = async () => {
+  const entry = { id: editingNoteId || "", kind: "note", title: $("n-title").value.trim(), url: "", username: "", password: "",
+    notes: $("n-body").value, totp: "", created: 0, updated: 0 };
+  try { const id = await call("save_entry", { entry }); modal("modal-note", false); toast("Catatan tersimpan"); await select(id); }
+  catch (e) { $("note-err").textContent = e.message; }
 };
 
 // ---------- hapus ----------
@@ -214,7 +317,7 @@ $("btn-change").onclick = async () => {
 };
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") for (const m of ["modal-edit", "modal-gen", "modal-settings", "modal-confirm"]) modal(m, false);
+  if (e.key === "Escape") for (const m of ["modal-edit", "modal-note", "modal-gen", "modal-settings", "modal-confirm"]) modal(m, false);
 });
 
 boot();

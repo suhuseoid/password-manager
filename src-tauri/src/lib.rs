@@ -1,3 +1,4 @@
+pub mod totp;
 pub mod vault;
 
 use serde::Serialize;
@@ -14,7 +15,10 @@ struct AppState { vault: Mutex<Option<Vault>>, path: Mutex<PathBuf> }
 struct Status { exists: bool, unlocked: bool, path: String, count: usize }
 
 #[derive(Serialize)]
-struct Summary { id: String, title: String, url: String, username: String, host: String, updated: i64 }
+struct Summary { id: String, kind: String, title: String, url: String, username: String, host: String, has_totp: bool, updated: i64 }
+
+#[derive(Serialize)]
+struct TotpCode { code: String, remaining: u64, period: u64, issuer: String, account: String }
 
 #[derive(Serialize)]
 struct ImportReport { source: String, imported: usize, duplicates: usize, skipped: usize }
@@ -60,14 +64,16 @@ fn unlock(st: State<AppState>, master: String) -> R<()> {
 fn lock(st: State<AppState>) { *st.vault.lock().unwrap() = None; }
 
 #[tauri::command]
-fn list_entries(st: State<AppState>, query: String) -> R<Vec<Summary>> {
+fn list_entries(st: State<AppState>, query: String, filter: String) -> R<Vec<Summary>> {
     let q = query.to_lowercase();
     with_vault(&st, |v| {
         let mut out: Vec<Summary> = v.data.entries.iter()
+            .filter(|e| match filter.as_str() {
+                "login" => e.kind == "login", "note" => e.kind == "note", "totp" => !e.totp.is_empty(), _ => true })
             .filter(|e| q.is_empty() || e.title.to_lowercase().contains(&q) || e.url.to_lowercase().contains(&q)
                 || e.username.to_lowercase().contains(&q) || e.notes.to_lowercase().contains(&q))
-            .map(|e| Summary { id: e.id.clone(), title: e.title.clone(), url: e.url.clone(),
-                               username: e.username.clone(), host: vault::host_of(&e.url), updated: e.updated })
+            .map(|e| Summary { id: e.id.clone(), kind: e.kind.clone(), title: e.title.clone(), url: e.url.clone(),
+                               username: e.username.clone(), host: vault::host_of(&e.url), has_totp: !e.totp.is_empty(), updated: e.updated })
             .collect();
         out.sort_by_key(|s| s.title.to_lowercase());
         Ok(out)
@@ -108,6 +114,11 @@ fn copy_field(st: State<AppState>, id: String, field: String) -> R<()> {
             "password" => e.password.clone(),
             "username" => e.username.clone(),
             "url" => e.url.clone(),
+            "notes" => e.notes.clone(),
+            "totp" => {
+                let t = totp::parse(&e.totp).map_err(|_| "Data ini tidak punya 2FA.")?;
+                t.code_at(totp::unix_now())
+            }
             _ => return Err("Kolom tidak dikenal.".into()),
         }))
     })?;
@@ -127,6 +138,36 @@ fn copy_and_clear(value: Zeroizing<String>) -> R<()> {
         }
     });
     Ok(())
+}
+
+/// Kode 2FA saat ini untuk sebuah data (kuncinya tidak pernah dikirim ke tampilan).
+#[tauri::command]
+fn totp_now(st: State<AppState>, id: String) -> R<TotpCode> {
+    with_vault(&st, |v| {
+        let e = v.get(&id).ok_or("Data tidak ditemukan.")?;
+        let t = totp::parse(&e.totp)?;
+        let now = totp::unix_now();
+        Ok(TotpCode { code: t.code_at(now), remaining: t.remaining(now), period: t.period, issuer: t.issuer, account: t.account })
+    })
+}
+
+/// Pratinjau saat mengisi kunci 2FA di formulir.
+#[tauri::command]
+fn totp_preview(secret: String) -> R<TotpCode> {
+    let secret = Zeroizing::new(secret);
+    let t = totp::parse(&secret)?;
+    let now = totp::unix_now();
+    Ok(TotpCode { code: t.code_at(now), remaining: t.remaining(now), period: t.period, issuer: t.issuer, account: t.account })
+}
+
+#[tauri::command]
+fn qr_decode(bytes: Vec<u8>) -> R<String> {
+    let text = totp::decode_qr(&bytes)?;
+    if !text.to_lowercase().starts_with("otpauth://") {
+        return Err("QR terbaca, tapi bukan QR untuk 2FA.".into());
+    }
+    totp::parse(&text)?;
+    Ok(text)
 }
 
 #[tauri::command]
@@ -174,7 +215,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             status, create_vault, unlock, lock, list_entries, get_entry, save_entry, delete_entry,
-            import_csv, copy_field, copy_text, generate, change_master, backup_now, reveal_folder
+            import_csv, copy_field, copy_text, generate, change_master, backup_now, reveal_folder,
+            totp_now, totp_preview, qr_decode
         ])
         .run(tauri::generate_context!())
         .expect("gagal menjalankan Brankas");

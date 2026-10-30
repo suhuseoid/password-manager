@@ -123,6 +123,23 @@ Atau jalankan tanpa FUSE:
    termasuk pembuat aplikasi.
 3. Klik **+ Tambah** untuk menyimpan password pertama, atau **Impor CSV** untuk memindahkan dari browser.
 
+### Menambahkan 2FA ke sebuah login
+1. Di situs (mis. Google, GitHub, Instagram), aktifkan **2-Step Verification / Authenticator app**.
+2. Situs menampilkan **QR code**. Ambil screenshot QR tersebut, atau klik "can't scan?" untuk melihat kunci teksnya.
+3. Di Brankas, buka login terkait > **Ubah** > kolom **Kunci 2FA**:
+   - klik **Pindai QR** lalu pilih screenshot tadi, **atau**
+   - tempel kunci teks (mis. `JBSW Y3DP EHPK 3PXP`).
+4. Simpan. Kode 6 digit akan tampil di halaman login tersebut dan berganti tiap 30 detik.
+5. Masukkan kode itu di situs untuk menyelesaikan aktivasi. **Hapus screenshot QR** setelahnya.
+
+> Kunci 2FA dan password yang disimpan di tempat yang sama berarti satu master password membuka keduanya.
+> Untuk akun paling penting (mis. email utama), pertimbangkan menyimpan 2FA di aplikasi authenticator terpisah di HP.
+
+### Menyimpan kode backup keamanan
+Klik **+ Catatan**, beri judul (mis. "Kode backup Google"), lalu tempel kodenya
+atau klik **Muat dari file .txt**. Isi catatan disembunyikan sampai Anda klik **Lihat**.
+Hapus file `.txt` asli setelah disimpan.
+
 Fitur keamanan yang aktif otomatis:
 - Brankas terkunci sendiri setelah **5 menit** tidak ada aktivitas.
 - Password yang disalin **dihapus dari clipboard setelah 20 detik**.
