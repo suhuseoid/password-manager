@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brankas</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Buat brankas baru -->
+<section id="view-setup" class="center hidden">
+  <div class="card narrow">
+    <div class="logo">🔐</div>
+    <h1>Buat Brankas Baru</h1>
+    <p class="muted">Semua password disimpan terenkripsi di komputer ini saja. Tanpa server, tanpa langganan.</p>
+    <label>Master password<input id="setup-pw" type="password" autocomplete="new-password"></label>
+    <div id="strength" class="strength"><span></span></div>
+    <label>Ulangi master password<input id="setup-pw2" type="password" autocomplete="new-password"></label>
+    <div class="warn">Master password <b>tidak bisa dipulihkan</b>. Jika lupa, isi brankas tidak bisa dibuka oleh siapa pun. Catat dan simpan di tempat aman.</div>
+    <button id="btn-create" class="primary wide">Buat Brankas</button>
+    <p id="setup-err" class="err"></p>
+  </div>
+</section>
+
+<!-- Buka brankas -->
+<section id="view-unlock" class="center hidden">
+  <div class="card narrow">
+    <div class="logo">🔐</div>
+    <h1>Brankas Terkunci</h1>
+    <label>Master password<input id="unlock-pw" type="password" autocomplete="current-password"></label>
+    <button id="btn-unlock" class="primary wide">Buka</button>
+    <p id="unlock-err" class="err"></p>
+  </div>
+</section>
+
+<!-- Tampilan utama -->
+<section id="view-main" class="hidden">
+  <header class="topbar">
+    <input id="search" type="search" placeholder="Cari situs, username, catatan…">
+    <button id="btn-add" class="primary">+ Tambah</button>
+    <button id="btn-import">Impor CSV</button>
+    <button id="btn-gen">Buat Password</button>
+    <button id="btn-settings">Pengaturan</button>
+    <button id="btn-lock">Kunci</button>
+    <input id="file-csv" type="file" accept=".csv,text/csv" class="hidden">
+  </header>
+  <div class="split">
+    <aside>
+      <div id="count" class="muted small"></div>
+      <ul id="list"></ul>
+    </aside>
+    <main id="detail">
+      <div class="empty muted">Pilih data di sebelah kiri, atau klik <b>+ Tambah</b>.</div>
+    </main>
+  </div>
+</section>
+
+<!-- Modal tambah/ubah -->
+<div id="modal-edit" class="modal hidden">
+  <div class="card">
+    <h2 id="edit-title">Tambah Data</h2>
+    <label>Judul<input id="f-title" placeholder="mis. BCA, Gmail kantor"></label>
+    <label>Alamat situs<input id="f-url" placeholder="https://…"></label>
+    <label>Username / email<input id="f-user" autocomplete="off"></label>
+    <label>Password
+      <div class="row"><input id="f-pass" type="password" autocomplete="off"><button id="f-show" type="button">Lihat</button><button id="f-gen" type="button">Acak</button></div>
+    </label>
+    <label>Catatan<textarea id="f-notes" rows="3"></textarea></label>
+    <div class="actions"><button id="edit-cancel">Batal</button><button id="edit-save" class="primary">Simpan</button></div>
+    <p id="edit-err" class="err"></p>
+  </div>
+</div>
+
+<!-- Modal pembuat password -->
+<div id="modal-gen" class="modal hidden">
+  <div class="card">
+    <h2>Buat Password Acak</h2>
+    <div class="genout" id="gen-out"></div>
+    <label>Panjang: <b id="gen-len-val">20</b><input id="gen-len" type="range" min="8" max="64" value="20"></label>
+    <label class="check"><input id="gen-sym" type="checkbox" checked> Pakai simbol (!@#$…)</label>
+    <div class="actions"><button id="gen-close">Tutup</button><button id="gen-again">Acak lagi</button><button id="gen-copy" class="primary">Salin</button></div>
+  </div>
+</div>
+
+<!-- Modal pengaturan -->
+<div id="modal-settings" class="modal hidden">
+  <div class="card">
+    <h2>Pengaturan</h2>
+    <h3>Lokasi file brankas</h3>
+    <p class="mono small" id="vault-path"></p>
+    <p class="muted small">File ini sudah terenkripsi. Salin ke SSD atau flashdisk secara rutin sebagai cadangan.</p>
+    <div class="row"><button id="btn-reveal">Buka folder</button><button id="btn-backup">Buat cadangan sekarang</button></div>
+    <h3>Ganti master password</h3>
+    <label>Master password lama<input id="cm-old" type="password"></label>
+    <label>Master password baru<input id="cm-new" type="password"></label>
+    <label>Ulangi password baru<input id="cm-new2" type="password"></label>
+    <div class="actions"><button id="settings-close">Tutup</button><button id="btn-change" class="primary">Ganti</button></div>
+    <p id="settings-err" class="err"></p>
+  </div>
+</div>
+
+<!-- Modal konfirmasi -->
+<div id="modal-confirm" class="modal hidden">
+  <div class="card narrow">
+    <h2 id="confirm-title">Yakin?</h2>
+    <p id="confirm-text" class="muted"></p>
+    <div class="actions"><button id="confirm-no">Batal</button><button id="confirm-yes" class="danger">Hapus</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="main.js"></script>
+</body>
+</html>
