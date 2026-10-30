@@ -3,6 +3,8 @@
 Penyimpan password offline untuk macOS, Windows, dan Linux.
 Tanpa server, tanpa langganan, tanpa integrasi browser.
 
+**[Panduan instalasi lengkap: macOS, Windows, Kali Linux](INSTALL.md)**  ·  **[Unduh](../../releases)**
+
 ## Keamanan
 - Master password diolah dengan **Argon2id** (64 MiB, 3 iterasi) menjadi kunci 256-bit.
 - Isi brankas dienkripsi **XChaCha20-Poly1305**. Header file ikut diautentikasi,
